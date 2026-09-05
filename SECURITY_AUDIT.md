@@ -10,15 +10,13 @@ Target branch: `security-hardening`.
 
 **Not yet approved for production/high-sensitivity deployment.**
 
-The fork removes several avoidable trust and network risks, but a required dependency (`GetSayAll/sayall-mac-remote`) is not publicly accessible from an unauthenticated/normal external GitHub client. Until that dependency is replaced and an independent build succeeds, this repository cannot be treated as a fully independent, reproducible, publicly auditable build.
+The fork has removed several avoidable trust and network risks and now has a build mode that excludes the inaccessible `GetSayAll/sayall-mac-remote` package. The remaining gate is completing the local compatibility interface and obtaining a clean application build/test result in that mode.
 
 ## Fixed in this branch
 
 ### 1. Sparkle dependency
 
 The baseline pinned Sparkle 2.9.4. The hardening branch requires and pins Sparkle 2.9.6.
-
-Reason: the fork must not retain a dependency version known to be affected by Sparkle security advisories fixed in 2.9.6.
 
 ### 2. Upstream automatic update trust path
 
@@ -32,47 +30,61 @@ The hardening branch:
 - prevents About/settings views from initiating background update-information refreshes;
 - keeps updater startup explicit-only.
 
-This prevents an independently reviewed fork from silently replacing itself with an upstream binary that was built using a different/private release graph.
+This prevents an independently reviewed fork from silently replacing itself with an upstream binary built from a different/private release graph.
 
 ### 3. Private package injection hooks
 
 The baseline package manifest accepted environment-controlled paths for proprietary/private packages, including AI, macro, membership and private artifact modules.
 
-The hardening branch removes those package injection hooks. Production code in this fork should be constrained to dependencies explicitly visible in the package manifest.
-
-The hardware simulation package hook remains test-only.
+The hardening branch removes those production package injection hooks. The hardware simulation package hook remains test-only.
 
 ### 4. Local Network / Bonjour declarations
 
-The Bluetooth-only hardening target does not require nearby iPhone/iPad/Watch LAN discovery.
-
-The hardening branch therefore removes:
+The Bluetooth-only hardening target removes:
 
 - `NSLocalNetworkUsageDescription`;
 - `_remotemic._tcp` from `NSBonjourServices`.
 
-The Bluetooth permission description is narrowed to supported Bluetooth remote controls. This prevents the hardened binary from requesting Local Network access while the mobile/Watch/Web code is being removed from the source graph.
+The Bluetooth permission description is narrowed to supported Bluetooth remote controls.
 
 ### 5. Upstream release/agent workflows
 
-Upstream workflows that depend on private deploy keys, private signing repositories, upstream release infrastructure and SayAll Agent automation have been removed from the hardening branch.
+Upstream workflows that depend on private deploy keys, signing repositories, upstream release infrastructure and SayAll Agent automation have been removed.
 
-The remaining `mac-ci.yml` is fork-specific and uses read-only repository permissions. It currently enforces the security baseline and will only run the independent Swift build gate after the private `sayall-mac-remote` dependency is removed.
+The remaining `mac-ci.yml` is fork-specific, uses read-only repository permissions, enforces the security baseline, checks that the local compatibility layer contains no remote transport implementation, and defines an independent hardened-remote build gate.
 
-### 6. Local compatibility-layer extraction started
+### 6. Switchable local remote compatibility mode
 
-The hardening branch now contains local, auditable compatibility modules under:
+The fork contains local, auditable modules under:
 
 - `Sources/SayAllMacRemoteCore/`;
 - `Sources/SayAllMacRemoteUI/`.
 
-These modules are intentionally inert. They are not yet wired into `Package.swift`; the current private dependency remains the active build dependency until all required host-side interfaces have been modeled and the switch can be made without breaking the RC003 Bluetooth path.
+`Package.swift` now supports:
 
-The compatibility layer will not reimplement Bonjour discovery, phone/watch listeners, WebSocket relay logic or cloud/Web Remote functionality.
+`REMOTE_MIC_HARDENED_REMOTE=1`
+
+When enabled, SwiftPM does **not** add `GetSayAll/sayall-mac-remote` to the dependency graph and instead supplies local targets named `SayAllMacRemoteCore` and `SayAllMacRemoteUI`. Existing host imports therefore do not need to change.
+
+The compatibility modules are intentionally inert and must not implement Bonjour discovery, nearby phone/watch listeners, URLSession/WebSocket relay logic or other remote transports. CI and Swift tests enforce that boundary.
+
+Known fail-closed compatibility surface now includes:
+
+- `PhoneRemoteInvitation`;
+- `WebRemoteSessionState`;
+- `WebRemoteConfiguration.relayURL()` returning `nil`;
+- `RemoteVoiceStartResult`;
+- `WatchBluetoothAudioSignalMetrics`;
+- no-op `PhoneRemoteServer` lifecycle/state APIs;
+- no-op `WatchBluetoothRemoteServer` lifecycle/state APIs;
+- no-op `WebRemoteRelayClient` lifecycle/state/audio APIs;
+- no-op button-title updates.
+
+The remaining compatibility gap is concentrated in callbacks that directly cross into host action/button types, especially mobile/Watch button events and Web Remote command/button callbacks.
 
 ### 7. Recording asset path traversal hardening
 
-Recording manifests no longer rely on permissive character-only path checks. `RecordingAssetPathPolicy` now:
+`RecordingAssetPathPolicy` now:
 
 - rejects absolute paths;
 - rejects empty path segments;
@@ -98,7 +110,7 @@ The public MCP implementation has useful defensive controls:
 - private files use mode 0600;
 - append paths use `O_NOFOLLOW` and file-type checks.
 
-MCP should still remain disabled unless it is explicitly needed.
+MCP should still remain disabled unless explicitly needed.
 
 ### Transcript and original-audio recording
 
@@ -106,37 +118,21 @@ Fresh installs default both local transcript history and original-audio recordin
 
 ## Open findings / blockers
 
-### BLOCKER: `sayall-mac-remote` is not independently auditable
+### BLOCKER: hardened-remote host build is not yet verified
 
-`Package.swift` still requires:
+The manifest still contains the pinned upstream package as a transitional fallback for normal builds, but `REMOTE_MIC_HARDENED_REMOTE=1` excludes it from the dependency graph.
 
-`https://github.com/GetSayAll/sayall-mac-remote.git`
+The next requirement is to make the entire host compile in hardened mode. The remaining known interface coupling is primarily:
 
-at revision:
+- mobile/Watch `onButtonEvent` callbacks tied to host button/action types;
+- Web Remote command/button callbacks tied to host action decoding;
+- tests that directly expect behavior from the private package.
 
-`7d1b3c2e1d88913bafaa3a401c939eb218a1f363`
+The target architecture is not to recreate those transports. Those callbacks should be removed or made inert so the RC003 Bluetooth path remains independent.
 
-The upstream release/CI workflows normally obtain this package using a deploy key and a local SwiftPM mirror. An external GitHub repository lookup currently returns Not Found.
+### OPEN: GitHub Actions not executing on the fork
 
-The direct public-source dependency surface is limited enough to support a staged removal. Direct imports are concentrated in:
-
-- `Sources/RemoteMic/BridgeAppModel.swift`;
-- `Sources/RemoteMic/SettingsView.swift`;
-- `Sources/RemoteMic/OnboardingView.swift`;
-- `Sources/RemoteMic/PhoneRemoteInvitationView.swift`;
-- `Tests/RemoteMicTests/WatchBluetoothVoiceJourneyTests.swift` (test-only).
-
-`BridgeAppModel` is the main coupling point and currently owns nearby phone, nearby Watch and Web Remote state/servers in the same model as the Xiaomi Bluetooth path.
-
-**Current replacement strategy:** model the minimum compile-time interface locally, make all mobile/Watch/Web behavior inert, then switch SwiftPM from the private package to the local compatibility targets. After the switch succeeds, physically remove obsolete UI/state/callback code in smaller follow-up commits.
-
-**Required resolution before deployment:**
-
-1. finish the local compatibility interface required by the host;
-2. replace `SayAllMacRemoteCore/UI` package products with local targets;
-3. remove the private dependency and pin from `Package.swift` / `Package.resolved`;
-4. run a clean build and test suite without any mirror/deploy key;
-5. remove remaining dead mobile/Watch/Web UI and lifecycle code.
+The hardened workflow is committed, but the repository currently reports zero workflow runs for `security-hardening` despite pushes to the branch. Until repository Actions are enabled, CI definitions cannot provide runtime build evidence.
 
 ## Recommended deployment permissions
 
@@ -160,11 +156,16 @@ Only grant Accessibility/Input Monitoring if a specific custom mapping or key-in
 
 1. Upstream updates are reviewed as source diffs before integration.
 2. Do not consume upstream prebuilt application updates through Sparkle.
-3. Keep dependency revisions/version floors explicit.
-4. Do not restore environment-controlled private production package injection.
-5. Do not merge `security-hardening` into `main` until an independent clean build and test run succeeds.
-6. Do not distribute a signed release until the `sayall-mac-remote` blocker is resolved.
+3. Do not restore environment-controlled private production package injection.
+4. Hardened compatibility modules must remain transport-free.
+5. Do not merge `security-hardening` into `main` until the hardened-remote mode passes a clean resolve, full tests and release build.
+6. Do not distribute a signed release until the transitional upstream remote dependency is removed from the manifest and runtime network/permission observation passes.
 
 ## Next gate
 
-The next security gate is **switching from the inaccessible remote package to the local compatibility modules**, followed by a clean SwiftPM resolve/test/release build. After that succeeds, remove dead mobile/Watch/Web code and perform runtime network/permission observation before approving deployment.
+1. Finish/remove the remaining host-coupled button/command callbacks.
+2. Build with `REMOTE_MIC_HARDENED_REMOTE=1` and verify the private package is absent from `swift package show-dependencies`.
+3. Run full tests and Apple Silicon/Intel release builds.
+4. Remove the transitional upstream `sayall-mac-remote` declaration and its `Package.resolved` pin.
+5. Remove remaining dead mobile/Watch/Web UI and lifecycle code.
+6. Perform runtime network and permission observation before approving deployment.
