@@ -42,6 +42,17 @@ The hardening branch removes those package injection hooks. Production code in t
 
 The hardware simulation package hook remains test-only.
 
+### 4. Local Network / Bonjour declarations
+
+The Bluetooth-only hardening target does not require nearby iPhone/iPad/Watch LAN discovery.
+
+The hardening branch therefore removes:
+
+- `NSLocalNetworkUsageDescription`;
+- `_remotemic._tcp` from `NSBonjourServices`.
+
+The Bluetooth permission description is narrowed to supported Bluetooth remote controls. This prevents the hardened binary from requesting Local Network access while the mobile/Watch/Web code is being removed from the source graph.
+
 ## Positive controls retained
 
 ### Local Agent / MCP
@@ -77,13 +88,23 @@ at revision:
 
 The upstream release/CI workflows normally obtain this package using a deploy key and a local SwiftPM mirror. An external GitHub repository lookup currently returns Not Found.
 
-**Required resolution before deployment:** one of the following:
+The direct public-source dependency surface is limited enough to support a staged removal. Direct imports are concentrated in:
 
-1. obtain legitimate read access and audit the exact pinned revision;
-2. have the dependency published for independent review;
-3. replace it with an auditable local implementation with equivalent required interfaces.
+- `Sources/RemoteMic/BridgeAppModel.swift`;
+- `Sources/RemoteMic/SettingsView.swift`;
+- `Sources/RemoteMic/OnboardingView.swift`;
+- `Sources/RemoteMic/PhoneRemoteInvitationView.swift`;
+- `Tests/RemoteMicTests/WatchBluetoothVoiceJourneyTests.swift` (test-only).
 
-Do not remove the dependency blindly: it contains functionality used by the application and doing so without a compatible replacement would produce an incomplete or non-building product.
+`BridgeAppModel` is the main coupling point and currently owns nearby phone, nearby Watch and Web Remote state/servers in the same model as the Xiaomi Bluetooth path. Removal should therefore be staged rather than replacing the dependency with unaudited stubs.
+
+**Required resolution before deployment:**
+
+1. remove mobile/Watch/Web UI entry points;
+2. remove their lifecycle/state from `BridgeAppModel`;
+3. remove the direct `SayAllMacRemoteCore/UI` imports;
+4. remove the package dependency and pin from `Package.swift` / `Package.resolved`;
+5. run a clean build and test suite without any mirror/deploy key.
 
 ### OPEN: upstream release workflows are not suitable for this fork
 
@@ -101,12 +122,6 @@ Normal application-generated manifests do not contain traversal paths, so this i
 
 **Required code fix before enabling recording:** validate every relative path component, reject empty/`.`/`..` components and absolute paths, standardize the resulting URL, and verify the standardized/resolved URL remains below the recording root before playback, integrity checks or deletion.
 
-### OPEN: Local Network / Bonjour attack surface
-
-The app still declares Local Network access and `_remotemic._tcp` Bonjour discovery for nearby iPhone/iPad/Watch features.
-
-For a Bluetooth-remote-only deployment, deny Local Network permission. Removal from the binary should wait until the inaccessible shared remote package can be audited, because that package participates in the nearby-device implementation.
-
 ## Recommended deployment permissions
 
 For a Bluetooth RC003-only deployment:
@@ -114,7 +129,7 @@ For a Bluetooth RC003-only deployment:
 | Capability | Default |
 |---|---|
 | Bluetooth | Allow |
-| Local Network | Deny |
+| Local Network | Not declared by hardened build |
 | Accessibility | Deny initially |
 | Input Monitoring | Deny initially |
 | Local transcript history | Off |
@@ -136,4 +151,4 @@ Only grant Accessibility/Input Monitoring if a specific custom mapping or key-in
 
 ## Next gate
 
-The next security gate is **dependency independence**. Once `sayall-mac-remote` is accessible/replaced, run a clean SwiftPM resolve, full tests, release build for Apple Silicon and Intel, inspect resulting entitlements/signatures, and then perform runtime network/permission observation before approving deployment.
+The next security gate is **mobile/Watch/Web extraction from the core model**, followed by full dependency independence. After the `sayall-mac-remote` import is eliminated, run a clean SwiftPM resolve, full tests, release build for Apple Silicon and Intel, inspect resulting entitlements/signatures, and then perform runtime network/permission observation before approving deployment.
