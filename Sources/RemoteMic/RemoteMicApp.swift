@@ -55,15 +55,15 @@ struct UpdateCheckPolicy: Equatable {
     let checksForPreReleaseUpdates: Bool
 
     var startsUpdaterAutomatically: Bool {
-        !checksForPreReleaseUpdates
+        false
     }
 
     var allowsBackgroundUpdatePrompts: Bool {
-        !checksForPreReleaseUpdates
+        false
     }
 
     var refreshesAboutInformationOnAppear: Bool {
-        !checksForPreReleaseUpdates
+        false
     }
 }
 
@@ -606,38 +606,25 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
             .removeDuplicates()
             .dropFirst()
             .receive(on: RunLoop.main)
-            .sink { [weak self] isEnabled in
+            .sink { [weak self] _ in
                 guard let self else { return }
                 updateCheckTask?.cancel()
                 updateInformation.reset()
-                let policy = UpdateCheckPolicy(checksForPreReleaseUpdates: isEnabled)
                 if updaterStarted {
-                    updaterController.updater.automaticallyChecksForUpdates =
-                        policy.allowsBackgroundUpdatePrompts
-                }
-                if policy.startsUpdaterAutomatically {
-                    startUpdaterIfNeeded()
-                    updaterController.updater.resetUpdateCycleAfterShortDelay()
-                    refreshUpdateInformation()
+                    updaterController.updater.automaticallyChecksForUpdates = false
                 }
             }
             .store(in: &subscriptions)
     }
 
     private func configureUpdater() {
-        let checksForPreReleaseUpdates = model.settings.checksForPreReleaseUpdates
-        guard checksForPreReleaseUpdates else {
-            startUpdaterIfNeeded()
-            return
-        }
+        // Security-hardened fork: never start Sparkle automatically.
+        // The updater may only be started from an explicit user-initiated check.
     }
 
     private func startUpdaterIfNeeded() {
         guard !updaterStarted else { return }
-        updaterController.updater.automaticallyChecksForUpdates =
-            UpdateCheckPolicy(
-                checksForPreReleaseUpdates: model.settings.checksForPreReleaseUpdates
-            ).allowsBackgroundUpdatePrompts
+        updaterController.updater.automaticallyChecksForUpdates = false
         updaterController.startUpdater()
         updaterStarted = true
     }
@@ -830,13 +817,13 @@ private final class RemoteMicAppDelegate: NSObject, NSApplicationDelegate, NSMen
                 updateInformation.setUnavailable()
                 AppLogger.shared.write(
                     "UPDATE CHECK prerelease_enabled=\(includePreRelease) resolved=false " +
-                        "source=cloudflare_channel user_alert=false"
+                        "source=disabled_in_security_fork user_alert=false"
                 )
                 return
             }
             AppLogger.shared.write(
                 "UPDATE CHECK prerelease_enabled=\(includePreRelease) resolved=true " +
-                    "source=\(testFeed == nil ? "cloudflare_channel" : "ui_test")"
+                    "source=\(testFeed == nil ? "configured_channel" : "ui_test")"
             )
             startUpdaterIfNeeded()
             guard !updaterController.updater.sessionInProgress else { return }
