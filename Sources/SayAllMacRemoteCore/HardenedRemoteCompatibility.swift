@@ -39,6 +39,101 @@ public enum RemoteVoiceStartResult: Equatable, Sendable {
     case unavailable
 }
 
+public typealias RemoteApprovalCompletion = (Bool) -> Void
+public typealias RemoteVoiceStartCompletion = (RemoteVoiceStartResult) -> Void
+
+/// No-op stand-in for the private nearby-phone listener.
+///
+/// Button-event callbacks are deliberately not modeled here yet because the
+/// upstream package couples those callbacks to host button types. The hardened
+/// extraction removes that coupling before the final dependency switch.
+public final class PhoneRemoteServer {
+    public var isIdentityTrusted: ((String) -> Bool)?
+    public var onConnectionStateChange: ((Bool) -> Void)?
+    public var onInvitationChange: ((PhoneRemoteInvitation?) -> Void)?
+    public var onApprovalCancelled: (() -> Void)?
+    public var onApprovalRequested: ((String, String, String?, RemoteApprovalCompletion) -> Void)?
+    public var onVoiceStartResult: ((RemoteVoiceStartCompletion) -> Void)?
+    public var onVoiceStop: (() -> Void)?
+    public var onAudio: (([Int16]) -> Void)?
+    public var onButtonEventsReset: (() -> Void)?
+
+    private let logger: (String) -> Void
+
+    public init(logger: @escaping (String) -> Void = { _ in }) {
+        self.logger = logger
+    }
+
+    public func start() {
+        logger("HARDENED PHONE REMOTE blocked")
+        onConnectionStateChange?(false)
+        onInvitationChange?(nil)
+    }
+
+    public func stop() {
+        onConnectionStateChange?(false)
+        onInvitationChange?(nil)
+    }
+
+    public func updateButtonTitles(_: [String: String]) {}
+}
+
+/// No-op stand-in for the private Watch BLE remote server.
+public final class WatchBluetoothRemoteServer {
+    public var isIdentityTrusted: ((String) -> Bool)?
+    public var onConnectionStateChange: ((Bool) -> Void)?
+    public var onApprovalCancelled: (() -> Void)?
+    public var onApprovalRequested: ((String, String, String?, RemoteApprovalCompletion) -> Void)?
+    public var onVoiceStartResult: ((RemoteVoiceStartCompletion) -> Void)?
+    public var onVoiceStop: (() -> Void)?
+    public var onAudio: (([Int16]) -> Void)?
+    public var onButtonEventsReset: (() -> Void)?
+
+    private let logger: (String) -> Void
+
+    public init(logger: @escaping (String) -> Void = { _ in }) {
+        self.logger = logger
+    }
+
+    public func start() {
+        logger("HARDENED WATCH REMOTE blocked")
+        onConnectionStateChange?(false)
+    }
+
+    public func stop() {
+        onConnectionStateChange?(false)
+    }
+
+    public func updateButtonTitles(_: [String: String]) {}
+}
+
+/// No-op stand-in for the private WebSocket relay client.
+public final class WebRemoteRelayClient {
+    public var onStateChange: ((WebRemoteSessionState) -> Void)?
+    public var onApprovalCancelled: (() -> Void)?
+    public var onApprovalRequested: ((String, String, RemoteApprovalCompletion) -> Void)?
+    public var onVoiceStart: ((RemoteVoiceStartCompletion) -> Void)?
+    public var onVoiceStop: (() -> Void)?
+    public var onAudio: (([Int16]) -> Void)?
+
+    public init() {}
+
+    public func start(
+        relayURL _: URL,
+        macName _: String,
+        appVersion _: String?,
+        buttonTitles _: [String: String]
+    ) {
+        onStateChange?(.unavailable)
+    }
+
+    public func stop() {
+        onStateChange?(.disabled)
+    }
+
+    public func updateButtonTitles(_: [String: String]) {}
+}
+
 /// Signal accumulator retained because the host uses it for diagnostics.
 /// It performs no networking and stores no audio beyond aggregate counters.
 public struct WatchBluetoothAudioSignalMetrics: Equatable, Sendable {
