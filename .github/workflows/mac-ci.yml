@@ -53,6 +53,14 @@ jobs:
           ! grep -q 'SAYALL_MEMBERSHIP_PACKAGE_PATH' Package.swift
           ! grep -q 'SAYALL_PRIVATE_ARTIFACT_PACKAGE_PATH' Package.swift
 
+      - name: Verify switchable hardened remote mode
+        shell: bash
+        run: |
+          grep -q 'REMOTE_MIC_HARDENED_REMOTE' Package.swift
+          grep -q 'if !useHardenedRemoteCompatibility' Package.swift
+          grep -q 'name: "SayAllMacRemoteCore"' Package.swift
+          grep -q 'name: "SayAllMacRemoteUI"' Package.swift
+
       - name: Enforce inert local remote compatibility layer
         shell: bash
         run: |
@@ -75,13 +83,13 @@ jobs:
             fi
           done
 
-      - name: Detect independent-build blocker
+      - name: Detect final private-dependency removal
         id: dependency
         shell: bash
         run: |
           if grep -q 'GetSayAll/sayall-mac-remote' Package.swift; then
             echo 'independent=false' >> "$GITHUB_OUTPUT"
-            echo '::warning::Independent build remains blocked by private sayall-mac-remote dependency.'
+            echo '::warning::Default manifest still contains the transitional upstream remote dependency.'
           else
             echo 'independent=true' >> "$GITHUB_OUTPUT"
           fi
@@ -104,8 +112,8 @@ jobs:
           swiftc \
             -parse-as-library \
             -emit-module \
-            -emit-module-path "$RUNNER_TEMP/hardened-modules/HardenedSayAllMacRemoteCore.swiftmodule" \
-            -module-name HardenedSayAllMacRemoteCore \
+            -emit-module-path "$RUNNER_TEMP/hardened-modules/SayAllMacRemoteCore.swiftmodule" \
+            -module-name SayAllMacRemoteCore \
             Sources/SayAllMacRemoteCore/*.swift
 
       - name: Compile hardened UI module without SwiftPM resolution
@@ -114,12 +122,37 @@ jobs:
             -parse-as-library \
             -emit-module \
             -I "$RUNNER_TEMP/hardened-modules" \
-            -emit-module-path "$RUNNER_TEMP/hardened-modules/HardenedSayAllMacRemoteUI.swiftmodule" \
-            -module-name HardenedSayAllMacRemoteUI \
+            -emit-module-path "$RUNNER_TEMP/hardened-modules/SayAllMacRemoteUI.swiftmodule" \
+            -module-name SayAllMacRemoteUI \
             Sources/SayAllMacRemoteUI/*.swift
 
+  hardened-remote-build:
+    name: Build with private remote package excluded
+    runs-on: macos-15
+    env:
+      REMOTE_MIC_HARDENED_REMOTE: "1"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      - name: Verify private remote is absent from resolved graph
+        run: |
+          swift package resolve
+          swift package show-dependencies > "$RUNNER_TEMP/dependencies.txt"
+          ! grep -q 'sayall-mac-remote' "$RUNNER_TEMP/dependencies.txt"
+
+      - name: Build local compatibility targets
+        run: |
+          swift build --target SayAllMacRemoteCore
+          swift build --target SayAllMacRemoteUI
+
+      - name: Compile application against local compatibility modules
+        run: swift build
+
   independent-build:
-    name: Independent Swift build
+    name: Final independent Swift build
     needs: security-baseline
     if: needs.security-baseline.outputs.independent == 'true'
     runs-on: macos-15
@@ -135,6 +168,7 @@ jobs:
             triple: x86_64-apple-macosx13.0
     env:
       RELEASE_VARIANT: ${{ matrix.variant }}
+      REMOTE_MIC_HARDENED_REMOTE: "1"
     steps:
       - name: Check out repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
