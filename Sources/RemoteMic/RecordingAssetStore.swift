@@ -221,12 +221,13 @@ final class RecordingAssetStore {
 
     func mediaURL(for manifest: RecordingAssetManifest) throws -> URL {
         try queue.sync {
-            guard Self.isSafePathComponent(manifest.relativeMediaPath) else {
+            guard let url = RecordingAssetPathPolicy.resolvedURL(
+                relativePath: manifest.relativeMediaPath,
+                rootDirectoryURL: rootDirectoryURL
+            ) else {
                 throw RecordingAssetStoreError.unsafePath
             }
-            let url = rootDirectoryURL.appendingPathComponent(manifest.relativeMediaPath)
-            guard url.standardizedFileURL.path.hasPrefix(rootDirectoryURL.standardizedFileURL.path + "/"),
-                  fileManager.fileExists(atPath: url.path),
+            guard fileManager.fileExists(atPath: url.path),
                   !isSymbolicLink(url)
             else { throw RecordingAssetStoreError.missingAsset }
             return url
@@ -238,8 +239,7 @@ final class RecordingAssetStore {
     ) throws -> RecordingAssetIntegrityDiagnostics {
         try queue.sync {
             let url = try mediaURLWithoutQueue(manifest)
-            guard url.standardizedFileURL.path.hasPrefix(rootDirectoryURL.standardizedFileURL.path + "/"),
-                  fileManager.fileExists(atPath: url.path),
+            guard fileManager.fileExists(atPath: url.path),
                   !isSymbolicLink(url)
             else { throw RecordingAssetStoreError.missingAsset }
             let actualByteCount = try fileSize(of: url)
@@ -316,7 +316,10 @@ final class RecordingAssetStore {
                       let manifest = try? load(at: manifestURL),
                       manifest.schemaVersion == RecordingAssetManifest.currentSchemaVersion,
                       manifest.localDateKey == dateDirectory.lastPathComponent,
-                      Self.isSafePathComponent(manifest.relativeMediaPath)
+                      RecordingAssetPathPolicy.isSafe(
+                          relativePath: manifest.relativeMediaPath,
+                          rootDirectoryURL: rootDirectoryURL
+                      )
                 else { continue }
                 manifests.append(manifest)
             }
@@ -337,10 +340,13 @@ final class RecordingAssetStore {
     }
 
     private func mediaURLWithoutQueue(_ manifest: RecordingAssetManifest) throws -> URL {
-        guard Self.isSafePathComponent(manifest.relativeMediaPath) else {
+        guard let url = RecordingAssetPathPolicy.resolvedURL(
+            relativePath: manifest.relativeMediaPath,
+            rootDirectoryURL: rootDirectoryURL
+        ) else {
             throw RecordingAssetStoreError.unsafePath
         }
-        return rootDirectoryURL.appendingPathComponent(manifest.relativeMediaPath)
+        return url
     }
 
     private func createDirectory(_ url: URL) throws {
@@ -422,14 +428,11 @@ final class RecordingAssetStore {
     }
 
     private static func isSafePathComponent(_ value: String) -> Bool {
-        guard !value.isEmpty, value != ".", value != ".." else { return false }
-        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: ".-_/"))
+        guard !value.isEmpty, value != ".", value != "..", !value.contains("/") else {
+            return false
+        }
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: ".-_"))
         return value.unicodeScalars.allSatisfy(allowed.contains)
-    }
-
-    private static func isSafePathComponent(_ value: String?) -> Bool {
-        guard let value else { return false }
-        return isSafePathComponent(value)
     }
 
     private static func isLocalDateKey(_ value: String) -> Bool {
