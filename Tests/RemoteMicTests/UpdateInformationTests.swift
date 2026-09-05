@@ -4,15 +4,15 @@ import Testing
 
 @Suite("Update information")
 struct UpdateInformationTests {
-    @Test func stableBuildKeepsAutomaticUpdateChecksAndAboutRefresh() {
+    @Test func stableBuildRequiresExplicitUpdateCheck() {
         let policy = UpdateCheckPolicy(checksForPreReleaseUpdates: false)
 
-        #expect(policy.startsUpdaterAutomatically)
-        #expect(policy.allowsBackgroundUpdatePrompts)
-        #expect(policy.refreshesAboutInformationOnAppear)
+        #expect(!policy.startsUpdaterAutomatically)
+        #expect(!policy.allowsBackgroundUpdatePrompts)
+        #expect(!policy.refreshesAboutInformationOnAppear)
     }
 
-    @Test func previewChecksRequireUserInitiatedAboutPageAction() {
+    @Test func previewBuildRequiresExplicitUpdateCheck() {
         let policy = UpdateCheckPolicy(checksForPreReleaseUpdates: true)
 
         #expect(!policy.startsUpdaterAutomatically)
