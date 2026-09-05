@@ -28,6 +28,11 @@ let macOSPlatform: SupportedPlatform = ProcessInfo.processInfo.environment["RELE
 // Do not load proprietary AI, membership, macro, or private artifact packages
 // from environment-controlled local paths. This keeps the build graph limited
 // to dependencies explicitly declared and reviewable in this manifest.
+//
+// The local SayAllMacRemoteCore/SayAllMacRemoteUI targets are deliberately
+// inert compatibility targets. They are registered now so their source boundary
+// is explicit and reviewable, but RemoteMic continues to use the pinned upstream
+// package until every required host-side interface has been modeled locally.
 
 if let hardwareSimulationPath = ProcessInfo.processInfo.environment[
     "REMOTE_MIC_HARDWARE_SIMULATION_PATH"
@@ -74,6 +79,15 @@ let package = Package(
             name: "SayAllMCP",
             dependencies: ["SayAllMCPKit"],
             path: "Sources/SayAllMCP"
+        ),
+        .target(
+            name: "HardenedSayAllMacRemoteCore",
+            path: "Sources/SayAllMacRemoteCore"
+        ),
+        .target(
+            name: "HardenedSayAllMacRemoteUI",
+            dependencies: ["HardenedSayAllMacRemoteCore"],
+            path: "Sources/SayAllMacRemoteUI"
         ),
         .testTarget(
             name: "RemoteMicTests",
