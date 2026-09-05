@@ -2,24 +2,45 @@
 import Foundation
 import PackageDescription
 
+let useHardenedRemoteCompatibility = ProcessInfo.processInfo.environment[
+    "REMOTE_MIC_HARDENED_REMOTE"
+] == "1"
+
 var packageDependencies: [Package.Dependency] = [
     .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.6"),
-    .package(
-        url: "https://github.com/GetSayAll/sayall-mac-remote.git",
-        revision: "7d1b3c2e1d88913bafaa3a401c939eb218a1f363"
-    ),
 ]
+if !useHardenedRemoteCompatibility {
+    packageDependencies.append(
+        .package(
+            url: "https://github.com/GetSayAll/sayall-mac-remote.git",
+            revision: "7d1b3c2e1d88913bafaa3a401c939eb218a1f363"
+        )
+    )
+}
+
 var remoteMicDependencies: [Target.Dependency] = [
     "AudioExceptionGuard",
     "SayAllMCPKit",
     .product(name: "Sparkle", package: "Sparkle"),
-    .product(name: "SayAllMacRemoteCore", package: "sayall-mac-remote"),
-    .product(name: "SayAllMacRemoteUI", package: "sayall-mac-remote"),
 ]
-var remoteMicTestDependencies: [Target.Dependency] = [
-    "RemoteMic",
-    .product(name: "SayAllMacRemoteCore", package: "sayall-mac-remote"),
-]
+var remoteMicTestDependencies: [Target.Dependency] = ["RemoteMic"]
+
+if useHardenedRemoteCompatibility {
+    remoteMicDependencies.append("SayAllMacRemoteCore")
+    remoteMicDependencies.append("SayAllMacRemoteUI")
+    remoteMicTestDependencies.append("SayAllMacRemoteCore")
+} else {
+    remoteMicDependencies.append(
+        .product(name: "SayAllMacRemoteCore", package: "sayall-mac-remote")
+    )
+    remoteMicDependencies.append(
+        .product(name: "SayAllMacRemoteUI", package: "sayall-mac-remote")
+    )
+    remoteMicTestDependencies.append(
+        .product(name: "SayAllMacRemoteCore", package: "sayall-mac-remote")
+    )
+}
+
 let macOSPlatform: SupportedPlatform = ProcessInfo.processInfo.environment["RELEASE_VARIANT"] == "intel"
     ? .macOS(.v13)
     : .macOS(.v14)
@@ -29,10 +50,9 @@ let macOSPlatform: SupportedPlatform = ProcessInfo.processInfo.environment["RELE
 // from environment-controlled local paths. This keeps the build graph limited
 // to dependencies explicitly declared and reviewable in this manifest.
 //
-// The local SayAllMacRemoteCore/SayAllMacRemoteUI targets are deliberately
-// inert compatibility targets. They are registered now so their source boundary
-// is explicit and reviewable, but RemoteMic continues to use the pinned upstream
-// package until every required host-side interface has been modeled locally.
+// REMOTE_MIC_HARDENED_REMOTE=1 selects the local, inert compatibility modules
+// using the same module names as the upstream package. This lets the host source
+// remain unchanged while the private dependency is progressively replaced.
 
 if let hardwareSimulationPath = ProcessInfo.processInfo.environment[
     "REMOTE_MIC_HARDWARE_SIMULATION_PATH"
@@ -81,12 +101,12 @@ let package = Package(
             path: "Sources/SayAllMCP"
         ),
         .target(
-            name: "HardenedSayAllMacRemoteCore",
+            name: "SayAllMacRemoteCore",
             path: "Sources/SayAllMacRemoteCore"
         ),
         .target(
-            name: "HardenedSayAllMacRemoteUI",
-            dependencies: ["HardenedSayAllMacRemoteCore"],
+            name: "SayAllMacRemoteUI",
+            dependencies: ["SayAllMacRemoteCore"],
             path: "Sources/SayAllMacRemoteUI"
         ),
         .testTarget(
