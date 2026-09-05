@@ -38,17 +38,11 @@
     <string>GPL-3.0-only</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
-	<key>SUFeedURL</key>
-	<string>https://download.sayall.app/mac/channels/stable/appcast.xml</string>
 	<key>SUEnableAutomaticChecks</key>
-	<true/>
-	<key>SUScheduledCheckInterval</key>
-	<integer>86400</integer>
+	<false/>
 	<key>SUAutomaticallyUpdate</key>
 	<false/>
 	<key>SUAllowsAutomaticUpdates</key>
 	<false/>
-	<key>SUPublicEDKey</key>
-	<string>8dWQovCnGPucjMcQuCHfrAv4PtjuDjJSbHNmItqYiyc=</string>
 </dict>
 </plist>
