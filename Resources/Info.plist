@@ -9,7 +9,7 @@
     <key>CFBundleExecutable</key>
     <string>RemoteMic</string>
     <key>CFBundleIdentifier</key>
-	<string>com.hd838a.RemoteMic</string>
+    <string>com.hd838a.RemoteMic</string>
     <key>CFBundleIconFile</key>
     <string>AppIcon</string>
     <key>CFBundleInfoDictionaryVersion</key>
@@ -18,31 +18,25 @@
     <string>SayAll</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
-	<key>CFBundleShortVersionString</key>
-	<string>1.9.21</string>
-	<key>CFBundleVersion</key>
-	<string>174</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.9.21</string>
+    <key>CFBundleVersion</key>
+    <string>174</string>
     <key>LSMinimumSystemVersion</key>
-	<string>14.0</string>
+    <string>14.0</string>
     <key>LSUIElement</key>
     <true/>
     <key>NSBluetoothAlwaysUsageDescription</key>
-    <string>Connect to supported remote controls and Apple Watch to receive button and voice data.</string>
-    <key>NSLocalNetworkUsageDescription</key>
-    <string>Allow nearby iPhone, iPad, and Apple Watch devices to connect as a remote control and microphone.</string>
-    <key>NSBonjourServices</key>
-    <array>
-        <string>_remotemic._tcp</string>
-    </array>
+    <string>Connect to supported Bluetooth remote controls to receive button and voice data.</string>
     <key>NSHumanReadableCopyright</key>
     <string>GPL-3.0-only</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
-	<key>SUEnableAutomaticChecks</key>
-	<false/>
-	<key>SUAutomaticallyUpdate</key>
-	<false/>
-	<key>SUAllowsAutomaticUpdates</key>
-	<false/>
+    <key>SUEnableAutomaticChecks</key>
+    <false/>
+    <key>SUAutomaticallyUpdate</key>
+    <false/>
+    <key>SUAllowsAutomaticUpdates</key>
+    <false/>
 </dict>
 </plist>
