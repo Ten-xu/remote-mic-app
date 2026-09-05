@@ -70,6 +70,19 @@ These modules are intentionally inert. They are not yet wired into `Package.swif
 
 The compatibility layer will not reimplement Bonjour discovery, phone/watch listeners, WebSocket relay logic or cloud/Web Remote functionality.
 
+### 7. Recording asset path traversal hardening
+
+Recording manifests no longer rely on permissive character-only path checks. `RecordingAssetPathPolicy` now:
+
+- rejects absolute paths;
+- rejects empty path segments;
+- rejects `.` and `..` segments;
+- rejects backslash-separated paths;
+- restricts each component to an explicit safe character set;
+- standardizes the resulting URL and verifies it remains below the recording root.
+
+`RecordingAssetStore` uses this policy when loading manifests, resolving media files and running integrity checks. Regression tests cover traversal, absolute paths, empty segments and unexpected characters.
+
 ## Positive controls retained
 
 ### Local Agent / MCP
@@ -124,16 +137,6 @@ The direct public-source dependency surface is limited enough to support a stage
 3. remove the private dependency and pin from `Package.swift` / `Package.resolved`;
 4. run a clean build and test suite without any mirror/deploy key;
 5. remove remaining dead mobile/Watch/Web UI and lifecycle code.
-
-### OPEN: local recording manifest path hardening
-
-`RecordingAssetStore` accepts a manifest-provided relative media path. The current character-based validation allows slash-separated path text and does not reject every `..` path segment before `mediaURLWithoutQueue` derives a filesystem location.
-
-Normal application-generated manifests do not contain traversal paths, so this is not currently assessed as a remote exploit. However a locally tampered manifest could influence later lookup/delete behavior.
-
-**Mitigation now:** original-audio recording remains off by default and should remain off for sensitive deployments.
-
-**Required code fix before enabling recording:** validate every relative path component, reject empty/`.`/`..` components and absolute paths, standardize the resulting URL, and verify the standardized/resolved URL remains below the recording root before playback, integrity checks or deletion.
 
 ## Recommended deployment permissions
 
