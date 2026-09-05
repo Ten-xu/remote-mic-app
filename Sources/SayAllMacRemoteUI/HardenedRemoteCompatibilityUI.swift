@@ -1,5 +1,5 @@
 import SwiftUI
-import HardenedSayAllMacRemoteCore
+import SayAllMacRemoteCore
 
 /// Marker protocol used by the hardened fork while the upstream private remote
 /// UI package is being removed. The RC003-only build intentionally provides no
