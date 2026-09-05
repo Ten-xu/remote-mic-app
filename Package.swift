@@ -20,76 +20,14 @@ var remoteMicTestDependencies: [Target.Dependency] = [
     "RemoteMic",
     .product(name: "SayAllMacRemoteCore", package: "sayall-mac-remote"),
 ]
-let privateArtifactPackagePath = ProcessInfo.processInfo.environment[
-    "SAYALL_PRIVATE_ARTIFACT_PACKAGE_PATH"
-]
 let macOSPlatform: SupportedPlatform = ProcessInfo.processInfo.environment["RELEASE_VARIANT"] == "intel"
     ? .macOS(.v13)
     : .macOS(.v14)
 
-if let privateFeaturePath = ProcessInfo.processInfo.environment[
-    "SAYALL_AI_PACKAGE_PATH"
-], !privateFeaturePath.isEmpty {
-    let packageIdentity = URL(fileURLWithPath: privateFeaturePath)
-        .lastPathComponent
-        .lowercased()
-    packageDependencies.append(.package(path: privateFeaturePath))
-    remoteMicDependencies.append(
-        .product(name: "SayAllAI", package: packageIdentity)
-    )
-}
-
-if let macroPlatformPath = ProcessInfo.processInfo.environment[
-    "SAYALL_MACRO_PLATFORM_PATH"
-], !macroPlatformPath.isEmpty {
-    let packageIdentity = URL(fileURLWithPath: macroPlatformPath)
-        .lastPathComponent
-        .lowercased()
-    packageDependencies.append(.package(path: macroPlatformPath))
-    remoteMicDependencies.append(
-        .product(name: "SayAllMacroRemoteMic", package: packageIdentity)
-    )
-}
-
-if let membershipPackagePath = ProcessInfo.processInfo.environment[
-    "SAYALL_MEMBERSHIP_PACKAGE_PATH"
-], !membershipPackagePath.isEmpty {
-    let packageIdentity = URL(fileURLWithPath: membershipPackagePath)
-        .lastPathComponent
-        .lowercased()
-    packageDependencies.append(.package(path: membershipPackagePath))
-    remoteMicDependencies.append(
-        .product(name: "SayAllMembershipCore", package: packageIdentity)
-    )
-    remoteMicDependencies.append(
-        .product(name: "SayAllMembershipUI", package: packageIdentity)
-    )
-}
-
-if let privateArtifactPackagePath, !privateArtifactPackagePath.isEmpty {
-    let sourcePackageVariables = [
-        "SAYALL_MACRO_PLATFORM_PATH",
-        "SAYALL_MEMBERSHIP_PACKAGE_PATH",
-    ]
-    if sourcePackageVariables.contains(where: {
-        !(ProcessInfo.processInfo.environment[$0] ?? "").isEmpty
-    }) {
-        fatalError("private artifacts cannot be combined with private source packages")
-    }
-    let packageIdentity = URL(fileURLWithPath: privateArtifactPackagePath)
-        .lastPathComponent
-        .lowercased()
-    packageDependencies.append(.package(path: privateArtifactPackagePath))
-    remoteMicDependencies.append(
-        .product(name: "SayAllMembershipCore", package: packageIdentity)
-    )
-    remoteMicDependencies.append(
-        .product(name: "SayAllMembershipUI", package: packageIdentity)
-    )
-    remoteMicDependencies.append(
-        .product(name: "SayAllMacroRemoteMic", package: packageIdentity)
-    )
-}
+// Security-hardened fork policy:
+// Do not load proprietary AI, membership, macro, or private artifact packages
+// from environment-controlled local paths. This keeps the build graph limited
+// to dependencies explicitly declared and reviewable in this manifest.
 
 if let hardwareSimulationPath = ProcessInfo.processInfo.environment[
     "REMOTE_MIC_HARDWARE_SIMULATION_PATH"
