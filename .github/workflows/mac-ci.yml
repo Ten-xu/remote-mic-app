@@ -1,232 +1,103 @@
-name: macOS CI
+name: Hardened Fork CI
 
 on:
   workflow_dispatch:
-  pull_request:
-    branches: [main]
   push:
-    branches: [main, release-main]
+    branches: [security-hardening]
+  pull_request:
+    branches: [main, security-hardening]
 
 concurrency:
-  group: mac-ci-${{ github.workflow }}-${{ github.ref }}
+  group: hardened-fork-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
-  actions: read
 
 jobs:
-  classify_changes:
-    name: Classify changed files
-    runs-on: macos-15
-    outputs:
-      docs_only: ${{ steps.changes.outputs.docs_only }}
-      release_control_plane_only: ${{ steps.changes.outputs.release_control_plane_only }}
-      product_change: ${{ steps.changes.outputs.product_change }}
+  security-baseline:
+    name: Security baseline
+    runs-on: ubuntu-latest
     steps:
       - name: Check out repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          fetch-depth: 0
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
 
-      - name: Classify changed paths
-        id: changes
+      - name: Verify Sparkle security floor
         shell: bash
-        env:
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
-            {
-              printf '%s\n' docs_only=false release_control_plane_only=false product_change=true
-            } >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
-            diff_range="$PR_BASE_SHA...HEAD"
+          grep -F '.package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.6")' Package.swift
+          grep -F '"version" : "2.9.6"' Package.resolved
+
+      - name: Verify upstream automatic update path is disabled
+        shell: bash
+        run: |
+          ! grep -q '<key>SUFeedURL</key>' Resources/Info.plist
+          grep -A1 '<key>SUEnableAutomaticChecks</key>' Resources/Info.plist | grep -q '<false/>'
+          grep -A1 '<key>SUAutomaticallyUpdate</key>' Resources/Info.plist | grep -q '<false/>'
+          grep -A1 '<key>SUAllowsAutomaticUpdates</key>' Resources/Info.plist | grep -q '<false/>'
+
+      - name: Verify Bluetooth-only permission surface
+        shell: bash
+        run: |
+          grep -q '<key>NSBluetoothAlwaysUsageDescription</key>' Resources/Info.plist
+          ! grep -q '<key>NSLocalNetworkUsageDescription</key>' Resources/Info.plist
+          ! grep -q '<key>NSBonjourServices</key>' Resources/Info.plist
+
+      - name: Reject private production package injection hooks
+        shell: bash
+        run: |
+          ! grep -q 'SAYALL_AI_PACKAGE_PATH' Package.swift
+          ! grep -q 'SAYALL_MACRO_PLATFORM_PATH' Package.swift
+          ! grep -q 'SAYALL_MEMBERSHIP_PACKAGE_PATH' Package.swift
+          ! grep -q 'SAYALL_PRIVATE_ARTIFACT_PACKAGE_PATH' Package.swift
+
+      - name: Detect independent-build blocker
+        id: dependency
+        shell: bash
+        run: |
+          if grep -q 'GetSayAll/sayall-mac-remote' Package.swift; then
+            echo 'independent=false' >> "$GITHUB_OUTPUT"
+            echo '::warning::Independent build remains blocked by private sayall-mac-remote dependency.'
           else
-            before_sha="${{ github.event.before }}"
-            if [[ -z "$before_sha" || "$before_sha" == 0000000000000000000000000000000000000000 ]]; then
-              {
-                printf '%s\n' docs_only=false release_control_plane_only=false product_change=true
-              } >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-            diff_range="$before_sha..HEAD"
+            echo 'independent=true' >> "$GITHUB_OUTPUT"
           fi
 
-          changed=false
-          docs_only=true
-          control_only=true
-          while IFS= read -r path; do
-            [[ -n "$path" ]] || continue
-            changed=true
-            case "$path" in
-              *.md|Screenshots/*)
-                ;;
-              .github/workflows/mac-release-package.yml|\
-              .github/workflows/mac-preview-publication.yml|\
-              .github/workflows/mac-stable-promote.yml|\
-              scripts/prepare-preview-release.sh|\
-              scripts/stage-macos-preview.sh|\
-              scripts/prepare-public-release-assets.sh|\
-              scripts/verify-preview-cdn-availability.sh|\
-              scripts/verify-staged-release-assets.sh|\
-              scripts/recover-preview-stage.sh|\
-              scripts/publish-staged-preview.sh|\
-              scripts/publish-preview-release.sh|\
-              scripts/promote-preview-release.sh|\
-              scripts/prepare-staged-preview-ui-test.sh|\
-              scripts/record-preview-ui-attestation.sh|\
-              scripts/verify-preview-ui-attestation.sh|\
-              scripts/verify-release-ready-main-ci.sh|\
-              scripts/verify-release-dependency-pins.sh|\
-              scripts/verify-release-workflow-gh-token.sh|\
-              scripts/verify-release-control-plane-diff.sh|\
-              scripts/test-macos-release-flow.sh|\
-              scripts/test-prepare-preview-release.sh|\
-              Tests/RemoteMicTests/BuildSigningTests.swift)
-                docs_only=false
-                ;;
-              *)
-                docs_only=false
-                control_only=false
-                ;;
-            esac
-          done < <(git diff --name-only "$diff_range")
+    outputs:
+      independent: ${{ steps.dependency.outputs.independent }}
 
-          if [[ "$changed" != true ]]; then
-            docs_only=false
-            control_only=false
-          fi
-          if [[ "$docs_only" == true ]]; then
-            control_only=false
-          fi
-          {
-            printf 'docs_only=%s\n' "$docs_only"
-            printf 'release_control_plane_only=%s\n' "$control_only"
-            printf 'product_change=%s\n' "$([[ "$control_only" == true || "$docs_only" == true ]] && echo false || echo true)"
-          } >> "$GITHUB_OUTPUT"
-
-  test:
-    name: Swift tests and build (${{ matrix.label }})
-    needs: classify_changes
+  independent-build:
+    name: Independent Swift build
+    needs: security-baseline
+    if: needs.security-baseline.outputs.independent == 'true'
     runs-on: macos-15
-    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         include:
-          - variant: apple-silicon
-            label: Apple Silicon
+          - label: Apple Silicon
+            variant: apple-silicon
             triple: arm64-apple-macosx14.0
-          - variant: intel
-            label: Intel Ventura
+          - label: Intel Ventura
+            variant: intel
             triple: x86_64-apple-macosx13.0
     env:
-      DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
       RELEASE_VARIANT: ${{ matrix.variant }}
-
     steps:
       - name: Check out repository
         uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
-          fetch-depth: 0
-
-      - name: Check patch formatting
-        run: |
-          if [[ "$GITHUB_EVENT_NAME" == pull_request ]]; then
-            git diff --check "${{ github.event.pull_request.base.sha }}...HEAD"
-          elif [[ -n "${{ github.event.before }}" && "${{ github.event.before }}" != 0000000000000000000000000000000000000000 ]]; then
-            git diff --check "${{ github.event.before }}..HEAD"
-          fi
-
-      - name: Run documentation checks
-        if: needs.classify_changes.outputs.docs_only == 'true'
-        run: |
-          for file in $(git diff --name-only HEAD^ HEAD -- '*.md' 'Screenshots/*'); do
-            test -f "$file"
-          done
-          echo "Documentation-only change passed."
-
-      - name: Run release control-plane fixture
-        if: needs.classify_changes.outputs.release_control_plane_only == 'true'
-        run: |
-          ./scripts/test-macos-release-flow.sh
-          swift test --filter BuildSigningTests
-
-      - name: Resolve versioned release dependencies
-        id: release-dependencies
-        if: needs.classify_changes.outputs.product_change == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        run: ./scripts/resolve-release-dependencies.sh github-output
-
-      - name: Check out private feature package
-        if: needs.classify_changes.outputs.product_change == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          repository: ${{ steps.release-dependencies.outputs.sayall_ai_repository }}
-          ref: ${{ steps.release-dependencies.outputs.sayall_ai_commit }}
-          path: .private-dependencies/sayall-ai
-          ssh-key: ${{ secrets.SAYALL_AI_DEPLOY_KEY }}
           persist-credentials: false
 
-      - name: Check out private macro package
-        if: needs.classify_changes.outputs.product_change == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          repository: ${{ steps.release-dependencies.outputs.sayall_macro_platform_repository }}
-          ref: ${{ steps.release-dependencies.outputs.sayall_macro_platform_commit }}
-          path: .private-dependencies/sayall-macro-platform
-          ssh-key: ${{ secrets.SAYALL_MACRO_PLATFORM_DEPLOY_KEY }}
-          persist-credentials: false
-
-      - name: Configure private packages
-        if: needs.classify_changes.outputs.product_change == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        run: |
-          echo "SAYALL_AI_PACKAGE_PATH=$GITHUB_WORKSPACE/.private-dependencies/sayall-ai" >> "$GITHUB_ENV"
-          echo "SAYALL_MACRO_PLATFORM_PATH=$GITHUB_WORKSPACE/.private-dependencies/sayall-macro-platform" >> "$GITHUB_ENV"
-
-      - name: Check out shared Mac remote package
-        id: remote-package
-        if: needs.classify_changes.outputs.product_change == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-        with:
-          repository: ${{ steps.release-dependencies.outputs.sayall_mac_remote_repository }}
-          ref: ${{ steps.release-dependencies.outputs.sayall_mac_remote_commit }}
-          path: .private-dependencies/sayall-mac-remote
-          ssh-key: ${{ secrets.SAYALL_MAC_REMOTE_DEPLOY_KEY }}
-          persist-credentials: false
-
-      - name: Configure shared Mac remote package
-        if: needs.classify_changes.outputs.product_change == 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
-        run: swift package config set-mirror --original https://github.com/GetSayAll/sayall-mac-remote.git --mirror "file://$GITHUB_WORKSPACE/.private-dependencies/sayall-mac-remote"
-
-      - name: Enforce repository boundaries
-        if: needs.classify_changes.outputs.product_change == 'true'
-        run: ./scripts/check-repository-boundaries.sh
-
-      - name: Verify release dependency pins
-        if: needs.classify_changes.outputs.product_change == 'true'
-        run: ./scripts/verify-release-dependency-pins.sh
-
-      - name: Show toolchain
-        if: needs.classify_changes.outputs.product_change == 'true'
+      - name: Show Swift toolchain
         run: swift --version
 
-      - name: Run Swift tests
-        if: needs.classify_changes.outputs.product_change == 'true'
+      - name: Resolve dependencies
+        run: swift package resolve
+
+      - name: Run tests
         run: swift test
 
-      - name: Run core first-voice journey gate
-        if: needs.classify_changes.outputs.product_change == 'true'
-        run: |
-          swift test --filter VoiceInputDestinationCoordinatorTests
-          swift test --filter CoreVoiceInputJourneyTests
-
-      - name: Run project self-test
-        if: needs.classify_changes.outputs.product_change == 'true'
-        run: SKIP_SWIFT_PACKAGE_BUILD=1 ./scripts/test.sh
-
       - name: Build release configuration
-        if: needs.classify_changes.outputs.product_change == 'true'
         run: swift build -c release --triple "${{ matrix.triple }}"
