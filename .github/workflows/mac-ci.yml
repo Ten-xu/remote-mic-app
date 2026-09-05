@@ -53,6 +53,28 @@ jobs:
           ! grep -q 'SAYALL_MEMBERSHIP_PACKAGE_PATH' Package.swift
           ! grep -q 'SAYALL_PRIVATE_ARTIFACT_PACKAGE_PATH' Package.swift
 
+      - name: Enforce inert local remote compatibility layer
+        shell: bash
+        run: |
+          test -d Sources/SayAllMacRemoteCore
+          test -d Sources/SayAllMacRemoteUI
+          for token in \
+            'import Network' \
+            'import CoreBluetooth' \
+            'URLSession' \
+            'NWListener' \
+            'NWConnection' \
+            'NWBrowser' \
+            'webSocketTask' \
+            '_remotemic._tcp' \
+            'WebSocket' \
+            'Bonjour'; do
+            if grep -R -n -F "$token" Sources/SayAllMacRemoteCore Sources/SayAllMacRemoteUI; then
+              echo "Forbidden remote transport token in compatibility layer: $token" >&2
+              exit 1
+            fi
+          done
+
       - name: Detect independent-build blocker
         id: dependency
         shell: bash
