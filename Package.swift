@@ -3,7 +3,7 @@ import Foundation
 import PackageDescription
 
 var packageDependencies: [Package.Dependency] = [
-    .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.4"),
+    .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.6"),
     .package(
         url: "https://github.com/GetSayAll/sayall-mac-remote.git",
         revision: "7d1b3c2e1d88913bafaa3a401c939eb218a1f363"
