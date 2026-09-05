@@ -3,9 +3,8 @@ import Foundation
 /// Minimal, auditable compatibility surface for the hardened fork.
 ///
 /// The upstream project obtains `SayAllMacRemoteCore` from a private package.
-/// This local module is intentionally limited to inert value types first; network
-/// listeners, relay clients, Bonjour discovery and Apple Watch/iPhone transports
-/// will not be reimplemented for the Bluetooth-RC003-only fork.
+/// This local module is intentionally inert: it does not implement network
+/// listeners, relay clients, Bonjour discovery, or Apple Watch/iPhone transports.
 public struct PhoneRemoteInvitation: Equatable, Sendable {
     public let url: URL?
 
@@ -17,8 +16,21 @@ public struct PhoneRemoteInvitation: Equatable, Sendable {
 public enum WebRemoteSessionState: Equatable, Sendable {
     case disabled
     case unavailable
+    case connecting
+    case waitingForPhone(URL, String, String?)
+    case awaitingApproval(URL, String, String?)
+    case connected(String)
+    case failed(String?)
 
+    /// Web Remote is intentionally unavailable in the RC003-only hardened fork.
     public var isEnabled: Bool { false }
+}
+
+/// Hardened fork policy: there is no relay endpoint. Keeping this API returning
+/// nil makes any legacy Web Remote entry point fail closed while dead UI/state
+/// code is removed in follow-up commits.
+public enum WebRemoteConfiguration {
+    public static func relayURL() -> URL? { nil }
 }
 
 public enum RemoteVoiceStartResult: Equatable, Sendable {
@@ -28,7 +40,7 @@ public enum RemoteVoiceStartResult: Equatable, Sendable {
 }
 
 /// Signal accumulator retained because the host uses it for diagnostics.
-/// It performs no networking and stores no audio.
+/// It performs no networking and stores no audio beyond aggregate counters.
 public struct WatchBluetoothAudioSignalMetrics: Equatable, Sendable {
     public private(set) var sampleCount = 0
     public private(set) var nonZeroSampleCount = 0
